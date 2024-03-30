@@ -73,6 +73,12 @@ public class MyComputerSimulation extends Simulation {
           );
 
   {
-    setUp(scn.injectOpen(atOnceUsers(1))).protocols(httpProtocol);
+    setUp(
+            scn.injectOpen(nothingFor(5),
+                    atOnceUsers(1),
+                    //Ramp up the users to 5 for a duration of 10 seconds
+                    rampUsers(5).during(10),
+                    //Add 2 constant users for 20 seconds duration
+                    constantUsersPerSec(2).during(20))).protocols(httpProtocol);
   }
 }
