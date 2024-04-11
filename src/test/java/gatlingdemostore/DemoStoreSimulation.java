@@ -1,5 +1,7 @@
 package gatlingdemostore;
 
+import java.util.concurrent.ThreadLocalRandom;
+
 import io.gatling.javaapi.core.ChainBuilder;
 import io.gatling.javaapi.core.FeederBuilder;
 import io.gatling.javaapi.core.ScenarioBuilder;
@@ -15,6 +17,9 @@ import static io.gatling.javaapi.core.CoreDsl.jsonFile;
 import static io.gatling.javaapi.core.CoreDsl.regex;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.core.CoreDsl.substring;
+import static io.gatling.javaapi.http.HttpDsl.Cookie;
+import static io.gatling.javaapi.http.HttpDsl.addCookie;
+import static io.gatling.javaapi.http.HttpDsl.flushCookieJar;
 import static io.gatling.javaapi.http.HttpDsl.http;
 
 public class DemoStoreSimulation extends Simulation {
@@ -34,6 +39,20 @@ public class DemoStoreSimulation extends Simulation {
   private static final FeederBuilder<String> loginFeeder =
           csv("/Users/arunkumarreddy/Documents/Projects/Project-Gatling/gatling-demostore/src/test/resources/data/loginDetails.csv")
                   .circular();
+
+  private static final ChainBuilder initSession =
+
+          exec(
+                  //Empty cookies for each VU
+                  flushCookieJar())
+                  //Setting a random number within our session
+                  .exec(session -> session.set("randomNumber", ThreadLocalRandom.current().nextInt()))
+                  //Session variable for customer logged in or not; initially not logged in set to false
+                  .exec(session -> session.set("customerLoggedIn", false))
+                  //Session variable to keep track of cart total
+                  .exec(session -> session.set("cartTotal", 0.00))
+                  //Generate a new cookie with a session id using a helper class
+                  .exec(addCookie(Cookie("sessionId", SessionId.random()).withDomain(DOMAIN)));
 
   private static final String uri1 = "demostore.gatling.io";
 
@@ -122,15 +141,21 @@ public class DemoStoreSimulation extends Simulation {
                     http("Viewing the Cart Page")
                             .get("/cart/view"));
 
+    private static final ChainBuilder CompleteCheckoutView =
+
+            exec(
+                    http("Checkout Cart")
+                            .get("http://" + uri1 + "/cart/checkout")
+                            .check(substring("Thanks for your order! See you soon!")));
 
   }
 
 
   {
 
-
     ScenarioBuilder scn =
             scenario("DemostoreSimulation")
+                    .exec(initSession)
                     .exec(CmsPage.homePage)
                     .pause(2)
                     .exec(CmsPage.aboutUs)
@@ -143,8 +168,9 @@ public class DemoStoreSimulation extends Simulation {
                     .pause(2)
                     .exec(Customer.login)
                     .pause(2)
-                    .exec(http("Checkout Cart").get("http://" + uri1 + "/cart/checkout"));
+                    .exec(Checkout.CompleteCheckoutView);
 
     setUp(scn.injectOpen(atOnceUsers(1))).protocols(HTTP_PROTOCOL);
+
   }
 }
