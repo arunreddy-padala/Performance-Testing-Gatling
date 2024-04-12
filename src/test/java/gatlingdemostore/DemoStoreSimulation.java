@@ -11,6 +11,7 @@ import io.gatling.javaapi.http.HttpProtocolBuilder;
 import static io.gatling.javaapi.core.CoreDsl.atOnceUsers;
 import static io.gatling.javaapi.core.CoreDsl.css;
 import static io.gatling.javaapi.core.CoreDsl.csv;
+import static io.gatling.javaapi.core.CoreDsl.doIf;
 import static io.gatling.javaapi.core.CoreDsl.exec;
 import static io.gatling.javaapi.core.CoreDsl.feed;
 import static io.gatling.javaapi.core.CoreDsl.jsonFile;
@@ -108,7 +109,21 @@ public class DemoStoreSimulation extends Simulation {
                       exec(
                               http("Add Product to Cart")
                                       .get("/cart/add/#{id}")
-                                      .check(substring("items in your cart")));
+                                      .check(substring("items in your cart")))
+
+                      //Calculating the cart total for the products
+                      .exec(
+                              session -> {
+
+                                double cartTotalCurrent = session.getDouble("cartTotal");
+                                //Price value extracted from JSON data
+                                double itemPrice = session.getDouble("price");
+                                return session.set("cartTotal", cartTotalCurrent + itemPrice);
+
+                              }
+
+
+                      );
 
 
     }
@@ -124,22 +139,62 @@ public class DemoStoreSimulation extends Simulation {
                                     .get("/login")
                                     //Css check to see if we are in the login page
                                     .check(substring("Username:")))
+
+                    //Print out the customerLoggedIn session value
+                    .exec(
+
+                            session -> {
+
+                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
+                              return session;
+
+                            }
+
+                    )
+
                     .exec(
                             http("Customer Login Action")
                                     .post("http://" + uri1 + "/login")
                                     .formParam("_csrf", "#{csrfValue}")
                                     .formParam("username", "#{username}")
-                                    .formParam("password", "#{password}"));
+                                    .formParam("password", "#{password}"))
+                    .exec(session -> session.set("customerLoggedIn", true))
+                    //Print out the customerLoggedIn session value
+                    .exec(
+
+                            session -> {
+
+                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
+                              return session;
+
+                            }
+
+                    );
 
 
   }
 
   private static class Checkout {
     private static final ChainBuilder ViewCart =
+            //If the customer isn't logged in then redirect to login transaction
+            doIf(session -> !session.getBoolean("customerLoggedIn"))
+                    .then(exec(Customer.login))
+                    .exec(
+                            http("Viewing the Cart Page")
+                                    .get("/cart/view")
+                                    //Check if the checkout total is equal to the total we calculated in product
+                                    .check(css("#grandTotal").isEL("$#{cartTotal}")))
+                    .exec(
 
-            exec(
-                    http("Viewing the Cart Page")
-                            .get("/cart/view"));
+                            session -> {
+
+                              System.out.println("Cart Total is: " + session.get("cartTotal").toString());
+                              return session;
+
+                            }
+
+                    );
+
 
     private static final ChainBuilder CompleteCheckoutView =
 
@@ -165,8 +220,9 @@ public class DemoStoreSimulation extends Simulation {
                     .exec(Catalog.Product.add)
                     .pause(2)
                     .exec(Checkout.ViewCart)
-                    .pause(2)
-                    .exec(Customer.login)
+                    //Code handled within the cart checkout transaction
+//                    .pause(2)
+//                    .exec(Customer.login)
                     .pause(2)
                     .exec(Checkout.CompleteCheckoutView);
 
