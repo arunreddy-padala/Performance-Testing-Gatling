@@ -1,5 +1,6 @@
 package gatlingdemostore;
 
+import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 
 import io.gatling.javaapi.core.ChainBuilder;
@@ -9,12 +10,20 @@ import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 
 import static io.gatling.javaapi.core.CoreDsl.atOnceUsers;
+import static io.gatling.javaapi.core.CoreDsl.constantConcurrentUsers;
+import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.css;
 import static io.gatling.javaapi.core.CoreDsl.csv;
 import static io.gatling.javaapi.core.CoreDsl.doIf;
 import static io.gatling.javaapi.core.CoreDsl.exec;
 import static io.gatling.javaapi.core.CoreDsl.feed;
+import static io.gatling.javaapi.core.CoreDsl.holdFor;
 import static io.gatling.javaapi.core.CoreDsl.jsonFile;
+import static io.gatling.javaapi.core.CoreDsl.jumpToRps;
+import static io.gatling.javaapi.core.CoreDsl.nothingFor;
+import static io.gatling.javaapi.core.CoreDsl.rampConcurrentUsers;
+import static io.gatling.javaapi.core.CoreDsl.rampUsers;
+import static io.gatling.javaapi.core.CoreDsl.reachRps;
 import static io.gatling.javaapi.core.CoreDsl.regex;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.core.CoreDsl.substring;
@@ -145,7 +154,7 @@ public class DemoStoreSimulation extends Simulation {
 
                             session -> {
 
-                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
+//                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
                               return session;
 
                             }
@@ -164,7 +173,7 @@ public class DemoStoreSimulation extends Simulation {
 
                             session -> {
 
-                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
+//                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
                               return session;
 
                             }
@@ -188,7 +197,7 @@ public class DemoStoreSimulation extends Simulation {
 
                             session -> {
 
-                              System.out.println("Cart Total is: " + session.get("cartTotal").toString());
+//                              System.out.println("Cart Total is: " + session.get("cartTotal").toString());
                               return session;
 
                             }
@@ -220,13 +229,54 @@ public class DemoStoreSimulation extends Simulation {
                     .exec(Catalog.Product.add)
                     .pause(2)
                     .exec(Checkout.ViewCart)
-                    //Code handled within the cart checkout transaction
-//                    .pause(2)
-//                    .exec(Customer.login)
                     .pause(2)
                     .exec(Checkout.CompleteCheckoutView);
 
-    setUp(scn.injectOpen(atOnceUsers(1))).protocols(HTTP_PROTOCOL);
+
+    //Open Model - Used to test system under increasing load (no of users)
+    /*
+    setUp(
+
+            scn.injectOpen(
+                    //Start with 3 users
+                    atOnceUsers(3),
+                    //Wait for 5 seconds
+                    nothingFor(Duration.ofSeconds(5)),
+                    //Increase the user count to 10 over a duration of 10 seconds
+                    rampUsers(10).during((Duration.ofSeconds(10))),
+                    //Wait for 10 seconds
+                    nothingFor(Duration.ofSeconds(10)),
+                    //Add 1 constant user per second over 20 seconds
+                    constantUsersPerSec(1).during(Duration.ofSeconds(20))))
+            .protocols(HTTP_PROTOCOL);
+            */
+
+    //Closed Model - Used to test system under constant load (no of users is constant)
+    /*
+    setUp(
+            scn.injectClosed(
+
+                    constantConcurrentUsers(5).during((Duration.ofSeconds(20))),
+                    rampConcurrentUsers(1).to(5).during((Duration.ofSeconds(20)))))
+            .protocols(HTTP_PROTOCOL);
+     */
+
+    //Open Model with Throttle
+    setUp(
+
+            scn.injectOpen(
+                    //Add one user per second for the next 3 mins
+                            constantUsersPerSec(1).during(Duration.ofMinutes(3)))
+                    .protocols(HTTP_PROTOCOL)
+                    .throttle(
+                            //Increase the request for seconds to 10 over the next 30 seconds
+                            reachRps(10).during(Duration.ofSeconds(30)),
+                            holdFor(Duration.ofSeconds(60)),
+                            //Increase the request for seconds to 20 over the next 30 seconds
+                            jumpToRps(20),
+                            holdFor(Duration.ofSeconds(60))))
+            //Run the test for a max of 3 mins
+            .maxDuration(Duration.ofMinutes(3));
 
   }
 }
