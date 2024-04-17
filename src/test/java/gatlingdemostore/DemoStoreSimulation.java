@@ -4,26 +4,20 @@ import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 
 import io.gatling.javaapi.core.ChainBuilder;
+import io.gatling.javaapi.core.Choice;
 import io.gatling.javaapi.core.FeederBuilder;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 
-import static io.gatling.javaapi.core.CoreDsl.atOnceUsers;
-import static io.gatling.javaapi.core.CoreDsl.constantConcurrentUsers;
-import static io.gatling.javaapi.core.CoreDsl.constantUsersPerSec;
 import static io.gatling.javaapi.core.CoreDsl.css;
 import static io.gatling.javaapi.core.CoreDsl.csv;
 import static io.gatling.javaapi.core.CoreDsl.doIf;
 import static io.gatling.javaapi.core.CoreDsl.exec;
 import static io.gatling.javaapi.core.CoreDsl.feed;
-import static io.gatling.javaapi.core.CoreDsl.holdFor;
 import static io.gatling.javaapi.core.CoreDsl.jsonFile;
-import static io.gatling.javaapi.core.CoreDsl.jumpToRps;
-import static io.gatling.javaapi.core.CoreDsl.nothingFor;
-import static io.gatling.javaapi.core.CoreDsl.rampConcurrentUsers;
 import static io.gatling.javaapi.core.CoreDsl.rampUsers;
-import static io.gatling.javaapi.core.CoreDsl.reachRps;
+import static io.gatling.javaapi.core.CoreDsl.randomSwitch;
 import static io.gatling.javaapi.core.CoreDsl.regex;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
 import static io.gatling.javaapi.core.CoreDsl.substring;
@@ -36,6 +30,14 @@ public class DemoStoreSimulation extends Simulation {
 
   private static final String DOMAIN = "demostore.gatling.io";
   private static final HttpProtocolBuilder HTTP_PROTOCOL = http.baseUrl("https://" + DOMAIN);
+
+  //Runtime properties that define the user count for simulation or default to 5 users
+  private static final int USER_COUNT = Integer.parseInt(System.getProperty("USERS", "5"));
+
+  private static final Duration RAMP_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("RAMP_DURATION", "10")));
+
+  private static final Duration TEST_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("TEST_DURATION", "60")));
+
 
   //Using external csv datasource for parameter values
   private static final FeederBuilder<String> categoryFeeder =
@@ -149,12 +151,9 @@ public class DemoStoreSimulation extends Simulation {
                                     //Css check to see if we are in the login page
                                     .check(substring("Username:")))
 
-                    //Print out the customerLoggedIn session value
                     .exec(
 
                             session -> {
-
-//                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
                               return session;
 
                             }
@@ -168,12 +167,9 @@ public class DemoStoreSimulation extends Simulation {
                                     .formParam("username", "#{username}")
                                     .formParam("password", "#{password}"))
                     .exec(session -> session.set("customerLoggedIn", true))
-                    //Print out the customerLoggedIn session value
                     .exec(
 
                             session -> {
-
-//                              System.out.println("Customer Logged in: " + session.get("customerLoggedIn").toString());
                               return session;
 
                             }
@@ -197,7 +193,6 @@ public class DemoStoreSimulation extends Simulation {
 
                             session -> {
 
-//                              System.out.println("Cart Total is: " + session.get("cartTotal").toString());
                               return session;
 
                             }
@@ -214,12 +209,58 @@ public class DemoStoreSimulation extends Simulation {
 
   }
 
+  private static class UserJourneys {
 
-  {
+    private static final Duration MIN_PAUSE = Duration.ofMillis(100);
+    private static final Duration MAX_PAUSE = Duration.ofMillis(500);
 
-    ScenarioBuilder scn =
-            scenario("DemostoreSimulation")
-                    .exec(initSession)
+    private static final ChainBuilder browseStore =
+
+            exec(
+                    initSession)
+                    .exec(CmsPage.homePage)
+                    .pause(MAX_PAUSE)
+                    .exec(CmsPage.aboutUs)
+                    //Chose random pause between the two
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    //Repeat the below 5 times
+                    .repeat(5)
+                    .on(
+                            exec(Catalog.Category.view)
+                                    .pause(MIN_PAUSE, MAX_PAUSE)
+                                    .exec((Catalog.Product.view)));
+
+    private static final ChainBuilder abandonCart =
+
+            exec(
+                    initSession)
+                    .exec(CmsPage.homePage)
+                    .pause(MAX_PAUSE)
+                    .exec(Catalog.Category.view)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Catalog.Product.view)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Catalog.Product.add);
+
+    private static final ChainBuilder completePurchase =
+
+            exec(
+                    initSession)
+                    .exec(CmsPage.homePage)
+                    .pause(MAX_PAUSE)
+                    .exec(Catalog.Category.view)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Catalog.Product.view)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Catalog.Product.add)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Checkout.ViewCart)
+                    .pause(MIN_PAUSE, MAX_PAUSE)
+                    .exec(Checkout.CompleteCheckoutView);
+
+    private static final ChainBuilder demostoreSimulation =
+
+            exec(initSession)
                     .exec(CmsPage.homePage)
                     .pause(2)
                     .exec(CmsPage.aboutUs)
@@ -232,51 +273,60 @@ public class DemoStoreSimulation extends Simulation {
                     .pause(2)
                     .exec(Checkout.CompleteCheckoutView);
 
+  }
 
-    //Open Model - Used to test system under increasing load (no of users)
-    /*
+  private static class Scenarios {
+
+    private static final ScenarioBuilder defaultPurchase =
+
+            scenario("Default Load Test Scenario")
+                    .during(TEST_DURATION)
+                    .on(
+                            //Randomly execute these scenarios based on the weights
+                            randomSwitch()
+                                    .on(
+
+                                            //Ex: Simulating the scenario where 75% of the users browse the store
+                                            new Choice.WithWeight(75.0, exec(UserJourneys.browseStore)),
+                                            new Choice.WithWeight(15.0, exec(UserJourneys.abandonCart)),
+                                            new Choice.WithWeight(10.0, exec(UserJourneys.completePurchase))));
+
+
+    private static final ScenarioBuilder highPurchase =
+
+            scenario("High Purchase Load Test Scenario")
+                    .during(Duration.ofSeconds(60))
+                    .on(
+                            //Randomly execute these scenarios based on the weights
+                            randomSwitch()
+                                    .on(
+
+                                            new Choice.WithWeight(25.0, exec(UserJourneys.browseStore)),
+                                            new Choice.WithWeight(25.0, exec(UserJourneys.abandonCart)),
+                                            new Choice.WithWeight(50.0, exec(UserJourneys.completePurchase))));
+
+
+    private static final ScenarioBuilder initialScenario =
+
+            scenario("Initial Load Test Scenario")
+                    .during(Duration.ofSeconds(60))
+                    .on(
+                            randomSwitch()
+                                    .on(
+                                            new Choice.WithWeight(100.0, exec(UserJourneys.demostoreSimulation))));
+
+  }
+
+
+  {
+
     setUp(
 
-            scn.injectOpen(
-                    //Start with 3 users
-                    atOnceUsers(3),
-                    //Wait for 5 seconds
-                    nothingFor(Duration.ofSeconds(5)),
-                    //Increase the user count to 10 over a duration of 10 seconds
-                    rampUsers(10).during((Duration.ofSeconds(10))),
-                    //Wait for 10 seconds
-                    nothingFor(Duration.ofSeconds(10)),
-                    //Add 1 constant user per second over 20 seconds
-                    constantUsersPerSec(1).during(Duration.ofSeconds(20))))
-            .protocols(HTTP_PROTOCOL);
-            */
+            Scenarios.defaultPurchase
+                    .injectOpen(rampUsers(USER_COUNT)
+                            .during(RAMP_DURATION))
+                    .protocols(HTTP_PROTOCOL));
 
-    //Closed Model - Used to test system under constant load (no of users is constant)
-    /*
-    setUp(
-            scn.injectClosed(
-
-                    constantConcurrentUsers(5).during((Duration.ofSeconds(20))),
-                    rampConcurrentUsers(1).to(5).during((Duration.ofSeconds(20)))))
-            .protocols(HTTP_PROTOCOL);
-     */
-
-    //Open Model with Throttle
-    setUp(
-
-            scn.injectOpen(
-                    //Add one user per second for the next 3 mins
-                            constantUsersPerSec(1).during(Duration.ofMinutes(3)))
-                    .protocols(HTTP_PROTOCOL)
-                    .throttle(
-                            //Increase the request for seconds to 10 over the next 30 seconds
-                            reachRps(10).during(Duration.ofSeconds(30)),
-                            holdFor(Duration.ofSeconds(60)),
-                            //Increase the request for seconds to 20 over the next 30 seconds
-                            jumpToRps(20),
-                            holdFor(Duration.ofSeconds(60))))
-            //Run the test for a max of 3 mins
-            .maxDuration(Duration.ofMinutes(3));
 
   }
 }
