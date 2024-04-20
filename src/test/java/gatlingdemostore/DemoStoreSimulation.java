@@ -3,24 +3,19 @@ package gatlingdemostore;
 import java.time.Duration;
 import java.util.concurrent.ThreadLocalRandom;
 
+import gatlingdemostore.pageObjects.Catalog;
+import gatlingdemostore.pageObjects.Checkout;
+import gatlingdemostore.pageObjects.CmsPages;
 import io.gatling.javaapi.core.ChainBuilder;
 import io.gatling.javaapi.core.Choice;
-import io.gatling.javaapi.core.FeederBuilder;
 import io.gatling.javaapi.core.ScenarioBuilder;
 import io.gatling.javaapi.core.Simulation;
 import io.gatling.javaapi.http.HttpProtocolBuilder;
 
-import static io.gatling.javaapi.core.CoreDsl.css;
-import static io.gatling.javaapi.core.CoreDsl.csv;
-import static io.gatling.javaapi.core.CoreDsl.doIf;
 import static io.gatling.javaapi.core.CoreDsl.exec;
-import static io.gatling.javaapi.core.CoreDsl.feed;
-import static io.gatling.javaapi.core.CoreDsl.jsonFile;
 import static io.gatling.javaapi.core.CoreDsl.rampUsers;
 import static io.gatling.javaapi.core.CoreDsl.randomSwitch;
-import static io.gatling.javaapi.core.CoreDsl.regex;
 import static io.gatling.javaapi.core.CoreDsl.scenario;
-import static io.gatling.javaapi.core.CoreDsl.substring;
 import static io.gatling.javaapi.http.HttpDsl.Cookie;
 import static io.gatling.javaapi.http.HttpDsl.addCookie;
 import static io.gatling.javaapi.http.HttpDsl.flushCookieJar;
@@ -32,25 +27,28 @@ public class DemoStoreSimulation extends Simulation {
   private static final HttpProtocolBuilder HTTP_PROTOCOL = http.baseUrl("https://" + DOMAIN);
 
   //Runtime properties that define the user count for simulation or default to 5 users
-  private static final int USER_COUNT = Integer.parseInt(System.getProperty("USERS", "5"));
+  private static final int USER_COUNT = Integer.parseInt(System.getProperty("USERS", "3"));
 
   private static final Duration RAMP_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("RAMP_DURATION", "10")));
 
   private static final Duration TEST_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("TEST_DURATION", "60")));
 
+  @Override
+//Prints the values before running the test
+  public void before() {
+    System.out.printf("Running test with %d users%n", USER_COUNT);
+    System.out.printf("Ramping users over with %d seconds%n", RAMP_DURATION.getSeconds());
+    System.out.printf("Total test duration with %d seconds%n", TEST_DURATION.getSeconds());
 
-  //Using external csv datasource for parameter values
-  private static final FeederBuilder<String> categoryFeeder =
-          csv("/Users/arunkumarreddy/Documents/Projects/Project-Gatling/gatling-demostore/src/test/resources/data/categoryDetails.csv")
-                  .random();
+  }
 
-  private static final FeederBuilder<Object> JsonFeederProducts =
-          jsonFile("/Users/arunkumarreddy/Documents/Projects/Project-Gatling/gatling-demostore/src/test/resources/data/productDetails.json")
-                  .random();
+  @Override
+//Prints the values after running the test
+  public void after() {
+    System.out.println("Stress testing is now complete");
 
-  private static final FeederBuilder<String> loginFeeder =
-          csv("/Users/arunkumarreddy/Documents/Projects/Project-Gatling/gatling-demostore/src/test/resources/data/loginDetails.csv")
-                  .circular();
+  }
+
 
   private static final ChainBuilder initSession =
 
@@ -66,148 +64,6 @@ public class DemoStoreSimulation extends Simulation {
                   //Generate a new cookie with a session id using a helper class
                   .exec(addCookie(Cookie("sessionId", SessionId.random()).withDomain(DOMAIN)));
 
-  private static final String uri1 = "demostore.gatling.io";
-
-
-  private static class CmsPage {
-
-    private static final ChainBuilder homePage =
-            exec(http("Load Home Page")
-                    .get("/")
-                    //Check to make sure home page loads correctly
-                    .check(regex("<title>Gatling Demo-Store</title>").exists())
-                    //Using css check to capture the csrf value and to be used in request 6
-                    .check(css("#_csrf", "content").saveAs("csrfValue")));
-
-
-    private static final ChainBuilder aboutUs =
-
-            exec(http("Load About Us")
-                    .get("/about-us")
-                    //Check to ensure the About Us title can be retrieved from the page
-                    .check(substring("About Us")));
-
-  }
-
-  private static class Catalog {
-    private static class Category {
-      private static final ChainBuilder view =
-              feed(categoryFeeder)
-                      .exec(
-                              //Parameterize the category type that we want to get
-                              http("Load Category Page - #{categoryName}")
-                                      .get("/category/#{categorySlug}")
-                                      //Check within the extracted page if the css selector CategoryName matches our parameter value
-                                      .check(css("#CategoryName").isEL("#{categoryName}")));
-
-
-    }
-
-    private static class Product {
-      private static final ChainBuilder view =
-
-              feed(JsonFeederProducts)
-                      .exec(
-                              http("Load product page - #{name}")
-                                      .get("/product/#{slug}")
-                                      .check(css("#ProductDescription").isEL("#{description}")));
-
-
-      private static final ChainBuilder add =
-
-              //Call the above product view chain builder and then process the below chain
-              exec(view).
-                      exec(
-                              http("Add Product to Cart")
-                                      .get("/cart/add/#{id}")
-                                      .check(substring("items in your cart")))
-
-                      //Calculating the cart total for the products
-                      .exec(
-                              session -> {
-
-                                double cartTotalCurrent = session.getDouble("cartTotal");
-                                //Price value extracted from JSON data
-                                double itemPrice = session.getDouble("price");
-                                return session.set("cartTotal", cartTotalCurrent + itemPrice);
-
-                              }
-
-
-                      );
-
-
-    }
-
-  }
-
-  private static class Customer {
-    private static final ChainBuilder login =
-
-            feed(loginFeeder)
-                    .exec(
-                            http("Load login page")
-                                    .get("/login")
-                                    //Css check to see if we are in the login page
-                                    .check(substring("Username:")))
-
-                    .exec(
-
-                            session -> {
-                              return session;
-
-                            }
-
-                    )
-
-                    .exec(
-                            http("Customer Login Action")
-                                    .post("http://" + uri1 + "/login")
-                                    .formParam("_csrf", "#{csrfValue}")
-                                    .formParam("username", "#{username}")
-                                    .formParam("password", "#{password}"))
-                    .exec(session -> session.set("customerLoggedIn", true))
-                    .exec(
-
-                            session -> {
-                              return session;
-
-                            }
-
-                    );
-
-
-  }
-
-  private static class Checkout {
-    private static final ChainBuilder ViewCart =
-            //If the customer isn't logged in then redirect to login transaction
-            doIf(session -> !session.getBoolean("customerLoggedIn"))
-                    .then(exec(Customer.login))
-                    .exec(
-                            http("Viewing the Cart Page")
-                                    .get("/cart/view")
-                                    //Check if the checkout total is equal to the total we calculated in product
-                                    .check(css("#grandTotal").isEL("$#{cartTotal}")))
-                    .exec(
-
-                            session -> {
-
-                              return session;
-
-                            }
-
-                    );
-
-
-    private static final ChainBuilder CompleteCheckoutView =
-
-            exec(
-                    http("Checkout Cart")
-                            .get("http://" + uri1 + "/cart/checkout")
-                            .check(substring("Thanks for your order! See you soon!")));
-
-  }
 
   private static class UserJourneys {
 
@@ -218,9 +74,9 @@ public class DemoStoreSimulation extends Simulation {
 
             exec(
                     initSession)
-                    .exec(CmsPage.homePage)
+                    .exec(CmsPages.homePage)
                     .pause(MAX_PAUSE)
-                    .exec(CmsPage.aboutUs)
+                    .exec(CmsPages.aboutUs)
                     //Chose random pause between the two
                     .pause(MIN_PAUSE, MAX_PAUSE)
                     //Repeat the below 5 times
@@ -234,7 +90,7 @@ public class DemoStoreSimulation extends Simulation {
 
             exec(
                     initSession)
-                    .exec(CmsPage.homePage)
+                    .exec(CmsPages.homePage)
                     .pause(MAX_PAUSE)
                     .exec(Catalog.Category.view)
                     .pause(MIN_PAUSE, MAX_PAUSE)
@@ -246,7 +102,7 @@ public class DemoStoreSimulation extends Simulation {
 
             exec(
                     initSession)
-                    .exec(CmsPage.homePage)
+                    .exec(CmsPages.homePage)
                     .pause(MAX_PAUSE)
                     .exec(Catalog.Category.view)
                     .pause(MIN_PAUSE, MAX_PAUSE)
@@ -261,9 +117,9 @@ public class DemoStoreSimulation extends Simulation {
     private static final ChainBuilder demostoreSimulation =
 
             exec(initSession)
-                    .exec(CmsPage.homePage)
+                    .exec(CmsPages.homePage)
                     .pause(2)
-                    .exec(CmsPage.aboutUs)
+                    .exec(CmsPages.aboutUs)
                     .pause(2)
                     .exec(Catalog.Category.view)
                     .pause(2)
@@ -320,12 +176,28 @@ public class DemoStoreSimulation extends Simulation {
 
   {
 
+    /* Sequential Execution
     setUp(
 
-            Scenarios.defaultPurchase
-                    .injectOpen(rampUsers(USER_COUNT)
-                            .during(RAMP_DURATION))
-                    .protocols(HTTP_PROTOCOL));
+            Scenarios.defaultPurchase.injectOpen(
+                            rampUsers(USER_COUNT)
+                                    .during(RAMP_DURATION))
+                    .protocols((HTTP_PROTOCOL)).
+                    andThen(
+                            Scenarios.highPurchase.injectOpen(
+                                            rampUsers(5)
+                                                    .during(Duration.ofSeconds(10)))
+                                    .protocols(HTTP_PROTOCOL)));
+
+     */
+
+
+    //Parallel Execution
+    setUp(
+
+            Scenarios.defaultPurchase.injectOpen(rampUsers(USER_COUNT).during(RAMP_DURATION)),
+            Scenarios.highPurchase.injectOpen(rampUsers(2).during(Duration.ofSeconds(10))))
+            .protocols(HTTP_PROTOCOL);
 
 
   }
