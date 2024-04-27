@@ -10,7 +10,7 @@ import static io.gatling.javaapi.http.HttpDsl.*;
 
 public class DemostoreApiSimulation extends Simulation {
 
-  private HttpProtocolBuilder httpProtocol = http
+  private final HttpProtocolBuilder httpProtocol = http
           .baseUrl("https://demostore.gatling.io")
           .header("Cache-Control", "no-cache")
           .contentTypeHeader("application/json")
@@ -57,6 +57,10 @@ public class DemostoreApiSimulation extends Simulation {
 
   private static class Categories {
 
+    //Feeder for Categories data
+    private static final FeederBuilder.Batchable<String> categoriesFeeder =
+            csv("data/categories.csv").random();
+
     private static final ChainBuilder list =
 
             exec(
@@ -68,26 +72,35 @@ public class DemostoreApiSimulation extends Simulation {
 
     private static final ChainBuilder update =
 
+            //Use the feeder
+            feed(categoriesFeeder)
             //Call the auth method first and then update the category
-            exec(Authentication.authenticate)
+                    .exec(Authentication.authenticate)
                     .exec(
                             http("Update Category")
-                                    .put("/api/category/7")
+                                    .put("/api/category/#{categoryId}")
                                     .headers(authorizationHeader)
-                                    .body(RawFileBody("gatlingdemostoreapi/demostoreapisimulation/update_category.json"))
-                                    .check(jsonPath("$.name").is("Everyone")));
+                                    //The RawFileBody content cannot be used with # session variables we need to use EL for the newer syntax
+                                    .body(ElFileBody("gatlingdemostoreapi/demostoreapisimulation/update_category.json"))
+                                    //Changed to EL as it's evaluating an expression
+                                    .check(jsonPath("$.name").isEL("#{categoryName}")));
 
   }
 
   private static class Products {
 
+    //Feeder for Categories data
+    private static final FeederBuilder.Batchable<String> productsFeeder =
+            csv("data/products.csv").circular();
+
     private static final ChainBuilder list =
 
-            exec(
+            feed(productsFeeder)
+                    .exec(
                     http("List Products")
-                            .get("/api/product?category=7")
+                            .get("/api/product?category=#{productCategoryId}")
                             //Check if products with Category id 7 shouldn't appear
-                            .check(jsonPath("$[?(@.categoryId != \"7\")]").notExists()));
+                            .check(jsonPath("$[?(@.categoryId != \"#{productCategoryId}\")]").notExists()));
 
 
     private static final ChainBuilder get =
@@ -112,18 +125,16 @@ public class DemostoreApiSimulation extends Simulation {
 
     private static final ChainBuilder create =
 
-            /*Create 3 products using 3 repeat DSL block,
-            productCount is our counter (starts from 0) which will increment when the repeat block runs*/
 
             //Call the auth method first and then create the product
             exec(Authentication.authenticate)
-                    .repeat(3, "productCount").on(
-
-                            exec(
-                                    http("Create Product #{productCount}")
+                    .feed(productsFeeder)
+                                    .exec(
+                                    http("Create Product #{productName}")
                                             .post("/api/product")
                                             .headers(authorizationHeader)
-                                            .body(RawFileBody("gatlingdemostoreapi/demostoreapisimulation/create_product_#{productCount}.json"))));
+                                            //Using a template to create a product and using the feeder inside the template to inject data
+                                            .body(ElFileBody("gatlingdemostoreapi/demostoreapisimulation/create_product.json")));
 
 
   }
@@ -141,8 +152,9 @@ public class DemostoreApiSimulation extends Simulation {
                   pause(2)
                           .exec(Products.update),
                   pause(2)
-                          .exec(Products.create),
+                          .repeat(3).on(exec(Products.create)),
                   pause(2)
+                          /*Create 3 products using repeat DSL block */
                           .exec(Categories.update)
 
           );
