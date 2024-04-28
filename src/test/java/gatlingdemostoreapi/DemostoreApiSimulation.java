@@ -74,7 +74,7 @@ public class DemostoreApiSimulation extends Simulation {
 
             //Use the feeder
             feed(categoriesFeeder)
-            //Call the auth method first and then update the category
+                    //Call the auth method first and then update the category
                     .exec(Authentication.authenticate)
                     .exec(
                             http("Update Category")
@@ -97,30 +97,83 @@ public class DemostoreApiSimulation extends Simulation {
 
             feed(productsFeeder)
                     .exec(
-                    http("List Products")
-                            .get("/api/product?category=#{productCategoryId}")
-                            //Check if products with Category id 7 shouldn't appear
-                            .check(jsonPath("$[?(@.categoryId != \"#{productCategoryId}\")]").notExists()));
+                            http("List Products")
+                                    .get("/api/product?category=#{productCategoryId}")
+                                    //Check if products with Category id 7 shouldn't appear
+                                    .check(jsonPath("$[?(@.categoryId != \"#{productCategoryId}\")]").notExists())
+                                    //Save the return list and use it in subsequent calls
+                                    .check(jmesPath("[*].id").ofList().saveAs("allProductIds")));
 
 
     private static final ChainBuilder get =
 
-            exec(
-                    http("Get a Product")
-                            .get("/api/product/34")
-                            .check(jsonPath("$.id").ofInt().is(34)));
+            //Using session variables store the product is in a list and randomly get one
+            exec(session -> {
+              List<Integer> allProductIds = session.getList("allProductIds");
+              return session.set("productId", allProductIds.get(new Random().nextInt(allProductIds.size())));
+            })
+                    .exec(
+
+                            session -> {
+                              //Array of ids
+                              System.out.println("allProductIds " + session.get("allProductIds").toString());
+                              //Randomly selected id from array
+                              System.out.println("productId selected " + session.get("productId").toString());
+                              return session;
+                            }
+                    )
+
+                    .exec(
+                            http("Get a Product")
+                                    //Using the above randomly selected productId
+                                    .get("/api/product/#{productId}")
+                                    .check(jmesPath("id").ofInt().isEL("#{productId}"))
+                                    //Capture the entire json of the get call and save as product
+                                    .check(jmesPath("@").ofMap().saveAs("product")))
+
+                    .exec(
+                            session -> {
+
+                              //Print the product obtained as part of GET call
+                              System.out.println("Product is " + session.get("product").toString());
+                              return session;
+                            }
+
+
+                    );
 
 
     private static final ChainBuilder update =
 
+            /*
+             * Simulating an actual user request where we receive a response using GET
+             * Update the product using a PUT
+             * */
+
             //Call the auth method first and then update the product
             exec(Authentication.authenticate)
+
+                    .exec(session -> {
+
+                      Map<String, Object> product = session.getMap("product");
+                      //Using the GET json value to set the session variables so that they can be reused
+                      return session.set("productCategoryId", product.get("categoryId"))
+                              .set("productName", product.get("name"))
+                              .set("productDescription", product.get("description"))
+                              .set("productImage", product.get("image"))
+                              .set("productPrice", product.get("price"))
+                              .set("productId", product.get("id"));
+
+                    })
+
+
                     .exec(
-                            http("Updating a Product")
-                                    .put("/api/product/34")
+                            http("Updating a Product #{productName}")
+                                    .put("/api/product/#{productId}")
                                     .headers(authorizationHeader)
-                                    .body(RawFileBody("gatlingdemostoreapi/demostoreapisimulation/update_product.json"))
-                                    .check(jsonPath("$.price").is("15.99")));
+                                    //Using the template json file as our body request
+                                    .body(ElFileBody("gatlingdemostoreapi/demostoreapisimulation/create_product.json"))
+                                    .check(jsonPath("$.price").isEL("#{productPrice}")));
 
 
     private static final ChainBuilder create =
@@ -129,12 +182,12 @@ public class DemostoreApiSimulation extends Simulation {
             //Call the auth method first and then create the product
             exec(Authentication.authenticate)
                     .feed(productsFeeder)
-                                    .exec(
-                                    http("Create Product #{productName}")
-                                            .post("/api/product")
-                                            .headers(authorizationHeader)
-                                            //Using a template to create a product and using the feeder inside the template to inject data
-                                            .body(ElFileBody("gatlingdemostoreapi/demostoreapisimulation/create_product.json")));
+                    .exec(
+                            http("Create Product #{productName}")
+                                    .post("/api/product")
+                                    .headers(authorizationHeader)
+                                    //Using a template to create a product and using the feeder inside the template to inject data
+                                    .body(ElFileBody("gatlingdemostoreapi/demostoreapisimulation/create_product.json")));
 
 
   }
