@@ -1,5 +1,6 @@
 package gatlingdemostoreapi;
 
+import java.time.Duration;
 import java.util.*;
 
 import io.gatling.javaapi.core.*;
@@ -116,9 +117,9 @@ public class DemostoreApiSimulation extends Simulation {
 
                             session -> {
                               //Array of ids
-                              System.out.println("allProductIds " + session.get("allProductIds").toString());
+//                              System.out.println("allProductIds " + session.get("allProductIds").toString());
                               //Randomly selected id from array
-                              System.out.println("productId selected " + session.get("productId").toString());
+//                              System.out.println("productId selected " + session.get("productId").toString());
                               return session;
                             }
                     )
@@ -135,7 +136,7 @@ public class DemostoreApiSimulation extends Simulation {
                             session -> {
 
                               //Print the product obtained as part of GET call
-                              System.out.println("Product is " + session.get("product").toString());
+//                              System.out.println("Product is " + session.get("product").toString());
                               return session;
                             }
 
@@ -213,6 +214,51 @@ public class DemostoreApiSimulation extends Simulation {
           );
 
   {
-    setUp(scn.injectOpen(atOnceUsers(1))).protocols(httpProtocol);
+    /*
+    * Open Model Simulation
+    * */
+//    setUp(
+//            scn.injectOpen(
+//                    atOnceUsers(3),
+//                    nothingFor(Duration.ofSeconds(5)),
+    //Add 1 user for every second
+//                    rampUsers(10).during(Duration.ofSeconds(10)),
+//                    nothingFor(Duration.ofSeconds(10)),
+//                    constantUsersPerSec(1).during(Duration.ofSeconds(20))))
+//            .protocols(httpProtocol);
+
+
+    /*
+     * Closed Model Simulation
+     * */
+
+//    setUp(
+//            scn.injectClosed(
+//                    //Take user from 1 to 5 over a 20 second period
+//                    rampConcurrentUsers(1).to(5).during(Duration.ofSeconds(20)),
+//                    constantConcurrentUsers(5).during(Duration.ofSeconds(20))))
+//                    .protocols(httpProtocol);
+
+    /*
+     * Throttle
+     * */
+
+
+    setUp(
+            scn.injectOpen(
+                    constantUsersPerSec(2).during(Duration.ofMinutes(3))))
+            .protocols(httpProtocol)
+            .throttle(
+                    //reach rps of 10 over 30 seconds
+                    reachRps(10).in(Duration.ofSeconds(30)),
+                    //hold that rps for 60 seconds
+                    holdFor(Duration.ofSeconds(60)),
+                    //Double the rps and hold again
+                    jumpToRps(20),
+                    holdFor(Duration.ofSeconds(60)))
+            //run the test max for 3 mins
+            .maxDuration(Duration.ofMinutes(3));
+
+
   }
 }
