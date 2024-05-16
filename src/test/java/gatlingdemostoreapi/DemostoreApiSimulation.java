@@ -94,6 +94,15 @@ public class DemostoreApiSimulation extends Simulation {
     private static final FeederBuilder.Batchable<String> productsFeeder =
             csv("data/products.csv").circular();
 
+    private static ChainBuilder listAll =
+
+            exec(
+                    http("List all Products")
+                            .get("/api/product")
+                            .check(jmesPath("[*]").ofList().saveAs("allProductIds"))
+
+            );
+
     private static final ChainBuilder list =
 
             feed(productsFeeder)
@@ -194,6 +203,89 @@ public class DemostoreApiSimulation extends Simulation {
   }
 
 
+  private static class UserJourneys {
+
+    private static Duration minPause = Duration.ofMillis(200);
+    private static Duration maxPause = Duration.ofSeconds(3);
+
+    public static ChainBuilder admin =
+
+            exec(initSession)
+                    .exec(Categories.list)
+                    .pause(minPause, maxPause)
+                    .exec(Products.list)
+                    .pause(minPause, maxPause)
+                    .exec(Products.get)
+                    .pause(minPause, maxPause)
+                    .exec(Products.update)
+                    .pause(minPause, maxPause)
+                    .repeat(3).on(exec(Products.create))
+                    .pause(minPause, maxPause)
+                    .exec(Categories.update);
+
+    /* User Journey to scrape products and prices */
+
+    public static ChainBuilder priceScrapper =
+
+            exec(Categories.list)
+                    .pause(minPause, maxPause)
+                    .exec(Products.listAll);
+
+    /* User Journey to update product price for the products that we get */
+    public static ChainBuilder priceUpdate =
+
+
+            exec(initSession)
+                    .exec(Products.listAll)
+                    .pause(minPause, maxPause)
+                    .repeat("#{allProducts.size()}", "productIndex")
+                    .on(
+                            exec(session -> {
+                              int index = session.getInt("productIndex");
+                              List<Object> allProducts = session.getList("allProducts");
+                              return session.set("product", allProducts.get(index));
+                            })
+
+                                    .exec(Products.update)
+                                    .pause(minPause, maxPause));
+
+
+  }
+
+  private static class Scenarios {
+
+    public static ScenarioBuilder defaultScn = scenario("Default Scenario Test")
+            .during(Duration.ofSeconds(60))
+            .on(
+                    randomSwitch().on(
+                            // Execute 20% of time admin scenario
+                            Choice.withWeight(20d, exec(UserJourneys.admin)),
+                            // Execute 40% of time price scrapper scenario
+                            Choice.withWeight(40d, exec(UserJourneys.priceScrapper)),
+                            Choice.withWeight(40d, exec(UserJourneys.priceUpdate))
+
+
+                    )
+
+            );
+
+    public static ScenarioBuilder noAdminScn = scenario("Load test without Admin")
+            .during(Duration.ofSeconds(60))
+            .on(
+                    randomSwitch().on(
+                            // Execute 60% of time price scrapper scenario
+                            Choice.withWeight(40d, exec(UserJourneys.priceScrapper)),
+                            // Execute 40% of time price scrapper scenario
+                            Choice.withWeight(40d, exec(UserJourneys.priceUpdate))
+
+
+                    )
+
+            );
+
+
+  }
+
   private ScenarioBuilder scn = scenario("DemostoreApiSimulation")
           .exec(
                   exec(initSession),
@@ -202,8 +294,7 @@ public class DemostoreApiSimulation extends Simulation {
                           .exec(Products.list),
                   pause(2)
                           .exec(Products.get).
-                          pause(2),
-                  pause(2)
+                          pause(2)
                           .exec(Products.update),
                   pause(2)
                           .repeat(3).on(exec(Products.create)),
@@ -214,38 +305,10 @@ public class DemostoreApiSimulation extends Simulation {
           );
 
   {
-    /*
-    * Open Model Simulation
-    * */
-//    setUp(
-//            scn.injectOpen(
-//                    atOnceUsers(3),
-//                    nothingFor(Duration.ofSeconds(5)),
-    //Add 1 user for every second
-//                    rampUsers(10).during(Duration.ofSeconds(10)),
-//                    nothingFor(Duration.ofSeconds(10)),
-//                    constantUsersPerSec(1).during(Duration.ofSeconds(20))))
-//            .protocols(httpProtocol);
-
-
-    /*
-     * Closed Model Simulation
-     * */
-
-//    setUp(
-//            scn.injectClosed(
-//                    //Take user from 1 to 5 over a 20 second period
-//                    rampConcurrentUsers(1).to(5).during(Duration.ofSeconds(20)),
-//                    constantConcurrentUsers(5).during(Duration.ofSeconds(20))))
-//                    .protocols(httpProtocol);
-
-    /*
-     * Throttle
-     * */
 
 
     setUp(
-            scn.injectOpen(
+            Scenarios.defaultScn.injectOpen(
                     constantUsersPerSec(2).during(Duration.ofMinutes(3))))
             .protocols(httpProtocol)
             .throttle(
