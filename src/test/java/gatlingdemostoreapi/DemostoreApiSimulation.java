@@ -21,6 +21,13 @@ public class DemostoreApiSimulation extends Simulation {
           Map.entry("authorization", "Bearer #{jwt}")
   );
 
+  /*
+  * Run time parameters if not passed default is used  */
+  private static final int USER_COUNT = Integer.parseInt(System.getProperty("USERS", "5"));
+  private static final Duration RAMP_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("RAMP_DURATION", "10")));
+  private static final Duration TEST_DURATION = Duration.ofSeconds(Integer.parseInt(System.getProperty("TEST_DURATION", "60")));
+
+
   private static final ChainBuilder initSession =
 
           //Session for authentication
@@ -255,7 +262,7 @@ public class DemostoreApiSimulation extends Simulation {
   private static class Scenarios {
 
     public static ScenarioBuilder defaultScn = scenario("Default Scenario Test")
-            .during(Duration.ofSeconds(60))
+            .during(TEST_DURATION)
             .on(
                     randomSwitch().on(
                             // Execute 20% of time admin scenario
@@ -307,20 +314,25 @@ public class DemostoreApiSimulation extends Simulation {
   {
 
 
-    setUp(
+//    setUp(
+//            Scenarios.defaultScn.injectOpen(
+//                    constantUsersPerSec(2).during(Duration.ofMinutes(3))))
+//            .protocols(httpProtocol)
+//            .throttle(
+//                    //reach rps of 10 over 30 seconds
+//                    reachRps(10).in(Duration.ofSeconds(30)),
+//                    //hold that rps for 60 seconds
+//                    holdFor(Duration.ofSeconds(60)),
+//                    //Double the rps and hold again
+//                    jumpToRps(20),
+//                    holdFor(Duration.ofSeconds(60)))
+//            //run the test max for 3 mins
+//            .maxDuration(Duration.ofMinutes(3));
+
+        setUp(
             Scenarios.defaultScn.injectOpen(
-                    constantUsersPerSec(2).during(Duration.ofMinutes(3))))
-            .protocols(httpProtocol)
-            .throttle(
-                    //reach rps of 10 over 30 seconds
-                    reachRps(10).in(Duration.ofSeconds(30)),
-                    //hold that rps for 60 seconds
-                    holdFor(Duration.ofSeconds(60)),
-                    //Double the rps and hold again
-                    jumpToRps(20),
-                    holdFor(Duration.ofSeconds(60)))
-            //run the test max for 3 mins
-            .maxDuration(Duration.ofMinutes(3));
+                    rampUsers(USER_COUNT).during(RAMP_DURATION))
+                    .protocols(httpProtocol));
 
 
   }
