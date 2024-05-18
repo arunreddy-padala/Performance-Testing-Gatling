@@ -106,7 +106,7 @@ public class DemostoreApiSimulation extends Simulation {
             exec(
                     http("List all Products")
                             .get("/api/product")
-                            .check(jmesPath("[*]").ofList().saveAs("allProductIds"))
+                            .check(jmesPath("[*]").ofList().saveAs("allProducts"))
 
             );
 
@@ -313,26 +313,28 @@ public class DemostoreApiSimulation extends Simulation {
 
   {
 
-
+    /*
+    Sequential execution multiple scn
+     */
 //    setUp(
 //            Scenarios.defaultScn.injectOpen(
-//                    constantUsersPerSec(2).during(Duration.ofMinutes(3))))
-//            .protocols(httpProtocol)
-//            .throttle(
-//                    //reach rps of 10 over 30 seconds
-//                    reachRps(10).in(Duration.ofSeconds(30)),
-//                    //hold that rps for 60 seconds
-//                    holdFor(Duration.ofSeconds(60)),
-//                    //Double the rps and hold again
-//                    jumpToRps(20),
-//                    holdFor(Duration.ofSeconds(60)))
-//            //run the test max for 3 mins
-//            .maxDuration(Duration.ofMinutes(3));
+//                            rampUsers(USER_COUNT).during(RAMP_DURATION))
+//                    .protocols(httpProtocol)
+//                    .andThen(
+//                            Scenarios.noAdminScn.injectOpen(
+//                                    rampUsers(5).during(Duration.ofSeconds(10)))
+//                                    .protocols(httpProtocol)));
 
-        setUp(
+
+        /*
+    Parallel execution multiple scn
+     */
+
+    setUp(
             Scenarios.defaultScn.injectOpen(
-                    rampUsers(USER_COUNT).during(RAMP_DURATION))
-                    .protocols(httpProtocol));
+                            rampUsers(USER_COUNT).during(RAMP_DURATION)),
+            Scenarios.noAdminScn.injectOpen(rampUsers(5).during(Duration.ofSeconds(10))))
+            .protocols(httpProtocol);
 
 
   }
