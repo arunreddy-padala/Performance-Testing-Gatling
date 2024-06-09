@@ -1,18 +1,22 @@
-Gatling plugin for Maven - Java demo project
-============================================
+# Performance_Testing_with_Gatling
 
-A simple showcase of a Maven project using the Gatling plugin for Maven. Refer to the plugin documentation
-[on the Gatling website](https://gatling.io/docs/current/extensions/maven_plugin/) for usage.
+This repository houses the testing framework developed for robust automated testing of our web application. Utilizing a suite of sophisticated tools and methods, this framework ensures thorough validation, dynamic data handling, and scalable load testing.
 
-This project is written in Java, others are available for [Kotlin](https://github.com/gatling/gatling-maven-plugin-demo-kotlin)
-and [Scala](https://github.com/gatling/gatling-maven-plugin-demo-scala).
-
-It includes:
-
-* [Maven Wrapper](https://maven.apache.org/wrapper/), so that you can immediately run Maven with `./mvnw` without having
-  to install it on your computer
-* minimal `pom.xml`
-* latest version of `io.gatling:gatling-maven-plugin` applied
-* sample [Simulation](https://gatling.io/docs/gatling/reference/current/general/concepts/#simulation) class,
-  demonstrating sufficient Gatling functionality
-* proper source file layout
+Key Features: 
+1. Dynamic Data Capture and Usage
+- Dynamic References: Avoids hardcoded values through CSS and regex checks, capturing dynamic data at runtime and storing these for subsequent tests.
+- CSS/Regex Checks: Validates initial page load and interactive elements accurately to ensure the application's UI is rendered as expected.
+2. Modular Test Architecture
+- Individual Classes: Transactions and scenarios are encapsulated within individual classes, enhancing maintainability and reusability.
+- Validation Checks: Uses CSS selectors to confirm transaction states and interactions within the application.
+3. Data-driven Testing
+- Feeder Integration: Employs feeders to externalize test data, facilitating easy updates and scalability.
+- Session Management: Manages user sessions effectively, tracking changes and statuses throughout the testing process.
+4. Enhanced Load Testing
+- Throttling and Duration Control: Implements controlled load increments and sustained testing periods to simulate real-world usage.
+- Sequential Execution: Ensures orderly execution of test scenarios with the andThen() method, maintaining the logical flow of operations.
+5. Pre/Post Test Configurations
+- Lifecycle Hooks: Utilizes @Before and @After annotations to set up preconditions and clean up after tests, ensuring each test starts with the correct setup.
+6. Content Validation and Monitoring
+- JSON Path and JMESPath: Validates API responses and extracts data dynamically to verify backend processes accurately.
+- Expression Language Support: Enhances the flexibility of validation checks and assertions within the tests.
